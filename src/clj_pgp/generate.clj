@@ -36,6 +36,7 @@
     (org.bouncycastle.openpgp
       PGPKeyPair
       PGPKeyRingGenerator
+      PGPSecretKey
       PGPSignature
       PGPSignatureSubpacketGenerator)
     (org.bouncycastle.openpgp.operator
@@ -209,6 +210,7 @@
    ^String passphrase
    ^PGPKeyPair master-key
    ^PGPSignatureSubpacketGenerator master-sig-gen]
+  (🧐/🧐)
   (PGPKeyRingGenerator.
     PGPSignature/POSITIVE_CERTIFICATION
     master-key
@@ -220,6 +222,32 @@
       (tags/public-key-algorithm-code (pgp/key-algorithm master-key))
       (tags/hash-algorithm-code :sha1))
     (secret-key-encryptor passphrase)))
+
+
+#_ ; This is the constructor internally called by `PGPKeyRingGenerator`
+(PGPSecretKey.
+  PGPSignature/POSITIVE_CERTIFICATION
+  master-key
+  user-id
+  (digest-calculator :sha1)
+  (.generate master-sig-gen)
+  nil
+  (BcPGPContentSignerBuilder.
+    (tags/public-key-algorithm-code (pgp/key-algorithm master-key))
+    (tags/hash-algorithm-code :sha1))
+  (secret-key-encryptor passphrase))
+
+
+;; This is an alternate way to create the same symptom, meant to be a close
+;; match to the failing method call in the above constructor
+#_
+(.encryptKeyData
+  (.build (BcPBESecretKeyEncryptorBuilder.
+            (tags/symmetric-key-algorithm-code :aes-256)
+            (.get (BcPGPDigestCalculatorProvider.)
+                  (tags/hash-algorithm-code :sha256)))
+          (.toCharArray "passphrase"))
+  (byte-array [1 2 3 4]) 1 2)
 
 
 (defn add-subkey!
@@ -338,3 +366,21 @@
        (doto
          ~(master-keyring-generator user-id passphrase (:master spec-map))
          ~@(map add-keyring-subkey (:subkeys spec-map))))))
+(pgp-gen/generate-keys
+  "user" "passphrase"
+  (master-key
+    (keypair rsa :rsa-general)))
+
+
+#_
+(macroexpand
+  '(generate-keys
+     "user" "passphrase"
+     (master-key
+       (keypair (rsa-keypair-generator 2048) :rsa-general))))
+
+
+(keyring-generator
+  "user" "passphrase"
+  (generate-keypair (rsa-keypair-generator 2048) :rsa-general)
+  (signature-generator :master))
